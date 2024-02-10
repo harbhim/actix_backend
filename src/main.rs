@@ -1,37 +1,56 @@
-use ::config::Config;
-use actix_web::{web, App, HttpServer};
+mod handlers;
+
+use std::u16;
+
 use dotenvy::dotenv;
-use tokio_postgres::NoTls;
+use sqlx::{postgres::PgPoolOptions, Pool, Postgres};
 
-mod config {
-    use serde::Deserialize;
+use actix_web::{web, App, HttpServer};
 
-    #[derive(Debug, Default, Deserialize)]
-    pub struct ExampleConfig {
-        pub server_addr: String,
-        pub pg: deadpool_postgres::Config,
-    }
+struct AppState {
+    db: Pool<Postgres>,
 }
-
-use config::ExampleConfig;
 
 #[actix_web::main]
 async fn main() -> std::io::Result<()> {
     dotenv().ok();
 
-    let _config = Config::builder()
-        .add_source(::config::Environment::default())
-        .build()
-        .unwrap();
+    // Get PostgreSQL pool
+    let pg_host = dotenvy::var("PG_HOST").unwrap();
+    let pg_port = dotenvy::var("PG_PORT").unwrap();
+    let pg_user = dotenvy::var("PG_USER").unwrap();
+    let pg_password = dotenvy::var("PG_PASSWORD").unwrap();
+    let pg_dbname = dotenvy::var("PG_DBNAME").unwrap();
 
-    let config: ExampleConfig = _config.try_deserialize().unwrap();
+    let pg_url = format!(
+        "postgres://{}:{}@{}:{}/{}",
+        pg_user, pg_password, pg_host, pg_port, pg_dbname
+    );
 
-    let pool = config.pg.create_pool(None, NoTls).unwrap();
+    let _pool = PgPoolOptions::new()
+        .max_connections(10)
+        .connect(&pg_url)
+        .await;
 
-    let server = HttpServer::new(move || App::new().app_data(web::Data::new(pool.clone())))
-        .bind(config.server_addr.clone())?
-        .run();
-    println!("Server running at http://{}/", config.server_addr);
+    let pool = match _pool {
+        Ok(_pool) => {
+            println!("✅ Connection to the database is successful!");
+            _pool
+        }
+        Err(e) => {
+            println!("🔥 Failed to connect to the database: {:?}", e);
+            std::process::exit(1);
+        }
+    };
 
-    server.await
+    println!("🚀 Server started successfully");
+
+    // HTTP Server
+    let server_domain = dotenvy::var("SERVER_DOMAIN").unwrap();
+    let port: u16 = dotenvy::var("PORT").unwrap().parse().unwrap();
+
+    HttpServer::new(move || App::new().app_data(web::Data::new(AppState { db: pool.clone() })))
+        .bind((server_domain, port))?
+        .run()
+        .await
 }
