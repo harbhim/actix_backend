@@ -1,4 +1,7 @@
 mod handlers;
+mod helpers;
+mod models;
+mod schema;
 
 use std::u16;
 
@@ -15,17 +18,7 @@ struct AppState {
 async fn main() -> std::io::Result<()> {
     dotenv().ok();
 
-    // Get PostgreSQL pool
-    let pg_host = dotenvy::var("PG_HOST").unwrap();
-    let pg_port = dotenvy::var("PG_PORT").unwrap();
-    let pg_user = dotenvy::var("PG_USER").unwrap();
-    let pg_password = dotenvy::var("PG_PASSWORD").unwrap();
-    let pg_dbname = dotenvy::var("PG_DBNAME").unwrap();
-
-    let pg_url = format!(
-        "postgres://{}:{}@{}:{}/{}",
-        pg_user, pg_password, pg_host, pg_port, pg_dbname
-    );
+    let pg_url = dotenvy::var("DATABASE_URL").unwrap();
 
     let _pool = PgPoolOptions::new()
         .max_connections(10)
@@ -43,14 +36,18 @@ async fn main() -> std::io::Result<()> {
         }
     };
 
-    println!("🚀 Server started successfully");
-
     // HTTP Server
     let server_domain = dotenvy::var("SERVER_DOMAIN").unwrap();
     let port: u16 = dotenvy::var("PORT").unwrap().parse().unwrap();
 
-    HttpServer::new(move || App::new().app_data(web::Data::new(AppState { db: pool.clone() })))
-        .bind((server_domain, port))?
-        .run()
-        .await
+    println!("🚀 Server started successfully at http://{server_domain}:{port}/");
+
+    HttpServer::new(move || {
+        App::new()
+            .app_data(web::Data::new(AppState { db: pool.clone() }))
+            .configure(handlers::config)
+    })
+    .bind((server_domain, port))?
+    .run()
+    .await
 }
