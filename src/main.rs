@@ -1,5 +1,8 @@
+mod auth;
+mod auth_schema;
 mod handlers;
 mod helpers;
+mod jwt;
 mod models;
 mod schema;
 
@@ -46,6 +49,7 @@ async fn main() -> std::io::Result<()> {
         App::new()
             .app_data(web::Data::new(AppState { db: pool.clone() }))
             .configure(handlers::config)
+            .configure(auth::config)
     })
     .bind((server_domain, port))?
     .run()
