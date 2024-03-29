@@ -1,19 +1,17 @@
 use chrono::Utc;
 use uuid::Uuid;
 
-use actix_web::{delete, get, post, put, web, HttpResponse, Responder};
+use actix_web::{delete, get, post, put, web, HttpMessage, HttpRequest, HttpResponse, Responder};
 
 use crate::{
-    helpers::pass_hash,
-    models::User,
-    schema::{CreateUserSchema, FilterOptions, UpdateUserSchema},
-    AppState,
+    helpers::pass_hash, jwt::JWTMiddleware, models::User, schema::{CreateUserSchema, FilterOptions, UpdateUserSchema}, AppState
 };
 
 pub fn config(conf: &mut web::ServiceConfig) {
     let scope = web::scope("api/users")
         .service(get_users)
         .service(create_user)
+        .service(user_me)
         .service(update_user)
         .service(delete_user);
 
@@ -72,6 +70,24 @@ async fn create_user(
                 .json(serde_json::json!({"status": "error","message": format!("{:?}", e)}));
         }
     }
+}
+
+
+#[get("/me")]
+async fn user_me(
+    req: HttpRequest,
+    data: web::Data<AppState>,
+    _: JWTMiddleware
+) -> impl Responder {
+    let extensions = req.extensions();
+    let user_id = extensions.get::<Uuid>().unwrap();
+
+    let query_result = sqlx::query_as!(User, "SELECT * FROM users WHERE id=$1", user_id)
+        .fetch_one(&data.db)
+        .await;
+
+    let response = serde_json::json!({"status": "success", "data": query_result.unwrap()});
+    HttpResponse::Ok().json(response)
 }
 
 #[put("/{id}")]
