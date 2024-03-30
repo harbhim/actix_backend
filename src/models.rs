@@ -1,10 +1,7 @@
 use argon2::{Argon2, PasswordHash, PasswordVerifier};
 use serde::{Deserialize, Serialize};
+use sqlx::{Pool, Postgres};
 use uuid::Uuid;
-
-use actix_web::web;
-
-use crate::AppState;
 
 #[derive(Debug, Deserialize, Serialize)]
 pub struct User {
@@ -18,13 +15,9 @@ pub struct User {
 }
 
 impl User {
-    pub async fn authenticate(
-        email: &str,
-        password: &[u8],
-        data: web::Data<AppState>,
-    ) -> Option<User> {
+    pub async fn authenticate(email: &str, password: &[u8], db: &Pool<Postgres>) -> Option<User> {
         let record = sqlx::query_as!(User, "SELECT * FROM users WHERE email=$1", email)
-            .fetch_one(&data.db)
+            .fetch_one(db)
             .await;
 
         match record {

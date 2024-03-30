@@ -9,17 +9,20 @@ mod schema;
 use std::u16;
 
 use dotenvy::dotenv;
+use env_logger::Env;
 use sqlx::{postgres::PgPoolOptions, Pool, Postgres};
 
-use actix_web::{web, App, HttpServer};
+use actix_web::{middleware::Logger, web, App, HttpServer};
 
 struct AppState {
     db: Pool<Postgres>,
+    secret: String,
 }
 
 #[actix_web::main]
 async fn main() -> std::io::Result<()> {
     dotenv().ok();
+    env_logger::init_from_env(Env::default().default_filter_or("info"));
 
     let pg_url = dotenvy::var("DATABASE_URL").unwrap();
 
@@ -42,14 +45,19 @@ async fn main() -> std::io::Result<()> {
     // HTTP Server
     let server_domain = dotenvy::var("SERVER_DOMAIN").unwrap();
     let port: u16 = dotenvy::var("PORT").unwrap().parse().unwrap();
+    let secret = dotenvy::var("JWT_SECRET_KEY").unwrap();
 
     println!("🚀 Server started successfully at http://{server_domain}:{port}/");
 
     HttpServer::new(move || {
         App::new()
-            .app_data(web::Data::new(AppState { db: pool.clone() }))
+            .app_data(web::Data::new(AppState {
+                db: pool.clone(),
+                secret: secret.clone(),
+            }))
             .configure(handlers::config)
             .configure(auth::config)
+            .wrap(Logger::default())
     })
     .bind((server_domain, port))?
     .run()
