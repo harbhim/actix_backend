@@ -3,9 +3,11 @@ use uuid::Uuid;
 
 use actix_web::{delete, get, post, put, web, HttpMessage, HttpRequest, HttpResponse, Responder};
 
-use crate::{
-    helpers::pass_hash, jwt::JWTMiddleware, models::User, schema::{CreateUserSchema, FilterOptions, UpdateUserSchema}, AppState
-};
+use crate::AppState;
+use crate::models::User;
+use crate::jwt::JWTMiddleware;
+use crate::helpers::pass_hash;
+use crate::schema::{CreateUserSchema, FilterOptions, UpdateUserSchema, UserMeSchema};
 
 pub fn config(conf: &mut web::ServiceConfig) {
     let scope = web::scope("api/users")
@@ -40,15 +42,14 @@ async fn get_users(params: web::Query<FilterOptions>, data: web::Data<AppState>)
 async fn create_user(
     body: web::Json<CreateUserSchema>,
     data: web::Data<AppState>,
+    _: JWTMiddleware
 ) -> impl Responder {
-    // let now = Utc::now();
-
     let password = body.password.as_bytes();
     let hash = pass_hash(&password);
 
     let query_result = sqlx::query_as!(
-        User,
-        "INSERT INTO users (first_name, last_name, email, password) VALUES ($1, $2, $3, $4) RETURNING *",
+        UserMeSchema,
+        "INSERT INTO users (first_name, last_name, email, password) VALUES ($1, $2, $3, $4) RETURNING id, first_name, last_name, email, created_at, updated_at",
         body.first_name,
         body.last_name,
         body.email,
@@ -59,15 +60,11 @@ async fn create_user(
 
     match query_result {
         Ok(user) => {
-            let user_response = serde_json::json!({"status": "success","data": serde_json::json!({
-                "user": user
-            })});
-
-            return HttpResponse::Ok().json(user_response);
+            HttpResponse::Ok().json(user)
         }
         Err(e) => {
             return HttpResponse::InternalServerError()
-                .json(serde_json::json!({"status": "error","message": format!("{:?}", e)}));
+                .json(serde_json::json!({"error": format!("{:?}", e)}));
         }
     }
 }
@@ -82,12 +79,12 @@ async fn user_me(
     let extensions = req.extensions();
     let user_id = extensions.get::<Uuid>().unwrap();
 
-    let query_result = sqlx::query_as!(User, "SELECT * FROM users WHERE id=$1", user_id)
+    let query_result = sqlx::query_as!(UserMeSchema,
+        "SELECT id, first_name, last_name, email, created_at, updated_at FROM users WHERE id=$1", user_id)
         .fetch_one(&data.db)
         .await;
 
-    let response = serde_json::json!({"status": "success", "data": query_result.unwrap()});
-    HttpResponse::Ok().json(response)
+    HttpResponse::Ok().json(query_result.unwrap())
 }
 
 #[put("/{id}")]

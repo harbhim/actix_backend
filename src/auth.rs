@@ -29,11 +29,11 @@ async fn user_login(body: web::Json<LoginSchema>, data: web::Data<AppState>) -> 
                 .max_age(ActixWebDuration::new(60 * 60, 0))
                 .http_only(true)
                 .finish();
-            let response = serde_json::json!({"status": "success", "access_token": token});
+            let response = serde_json::json!({"access_token": token});
             HttpResponse::Ok().cookie(cookie).json(response)
         }
         None => {
-            let response = serde_json::json!({"status": "error", "data": "Unauthorized"});
+            let response = serde_json::json!({"data": "Unauthorized"});
             HttpResponse::Forbidden().json(serde_json::json!(response))
         }
     }
