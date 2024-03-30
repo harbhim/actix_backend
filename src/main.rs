@@ -9,6 +9,7 @@ mod schema;
 use std::u16;
 
 use dotenvy::dotenv;
+use env_logger::Env;
 use sqlx::{postgres::PgPoolOptions, Pool, Postgres};
 
 use actix_web::{middleware::Logger, web, App, HttpServer};
@@ -21,6 +22,7 @@ struct AppState {
 #[actix_web::main]
 async fn main() -> std::io::Result<()> {
     dotenv().ok();
+    env_logger::init_from_env(Env::default().default_filter_or("info"));
 
     let pg_url = dotenvy::var("DATABASE_URL").unwrap();
 
