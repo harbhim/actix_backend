@@ -1,5 +1,6 @@
 use actix_web::cookie::{time::Duration as ActixWebDuration, Cookie};
 use actix_web::{get, post, web, HttpResponse, Responder};
+use argon2::{Argon2, PasswordHash, PasswordVerifier};
 
 use crate::auth_schema::LoginSchema;
 use crate::jwt::{generate_token, JWTMiddleware};
@@ -12,6 +13,28 @@ pub fn config(conf: &mut web::ServiceConfig) {
         .service(user_logout);
 
     conf.service(scope);
+}
+
+pub async fn authenticate(email: &str, password: &[u8], db: &Pool<Postgres>) -> Option<User> {
+    let record = sqlx::query_as!(User, "SELECT * FROM users WHERE email=$1", email)
+        .fetch_one(db)
+        .await;
+
+    match record {
+        Ok(user) => {
+            let parsed_hash = PasswordHash::new(&user.password).unwrap();
+
+            if Argon2::default()
+                .verify_password(password, &parsed_hash)
+                .is_ok()
+            {
+                Some(user)
+            } else {
+                None
+            }
+        }
+        Err(_) => None,
+    }
 }
 
 #[post("/login")]

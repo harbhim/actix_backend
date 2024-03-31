@@ -1,11 +1,15 @@
 use chrono::Utc;
 use uuid::Uuid;
 
+use sea_orm::*;
 use actix_web::{delete, get, post, put, web, HttpMessage, HttpRequest, HttpResponse, Responder};
 
 use crate::{
-    helpers::pass_hash, jwt::JWTMiddleware, models::User, schema::{CreateUserSchema, FilterOptions, UpdateUserSchema}, AppState
+    helpers::pass_hash, jwt::JWTMiddleware, schema::{CreateUserSchema, UpdateUserSchema}, AppState
 };
+
+use crate::entities::users;
+use crate::entities::prelude::*;
 
 pub fn config(conf: &mut web::ServiceConfig) {
     let scope = web::scope("api/users")
@@ -19,21 +23,9 @@ pub fn config(conf: &mut web::ServiceConfig) {
 }
 
 #[get("/")]
-async fn get_users(params: web::Query<FilterOptions>, data: web::Data<AppState>) -> impl Responder {
-    let limit = params.limit.unwrap_or(10);
-    let offset = (params.page.unwrap_or(1) - 1) * limit;
-
-    let query_result = sqlx::query_as!(
-        User,
-        "SELECT * FROM users ORDER BY created_at DESC LIMIT $1 OFFSET $2",
-        limit as i64,
-        offset as i64
-    )
-    .fetch_all(&data.db)
-    .await;
-
-    let response = serde_json::json!({"status": "success", "data": query_result.unwrap()});
-    HttpResponse::Ok().json(response)
+async fn get_users(data: web::Data<AppState>) -> impl Responder {
+    let users: Vec<users::Model> = Users::find().all(&data.db).await.unwrap();
+    HttpResponse::Ok().json(users)
 }
 
 #[post("/")]
