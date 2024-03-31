@@ -1,7 +1,6 @@
-use argon2::{
-    password_hash::{rand_core::OsRng, PasswordHasher, SaltString},
-    Argon2,
-};
+use argon2::password_hash::rand_core::OsRng;
+use argon2::password_hash::{PasswordHasher, SaltString};
+use argon2::Argon2;
 
 pub fn pass_hash(password: &[u8]) -> String {
     let salt = SaltString::generate(&mut OsRng);

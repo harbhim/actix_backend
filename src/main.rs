@@ -2,7 +2,6 @@ mod auth;
 mod auth_schema;
 mod entities;
 mod handlers;
-mod helpers;
 mod jwt;
 mod migrator;
 mod schema;
