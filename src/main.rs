@@ -8,7 +8,6 @@ mod schema;
 
 use crate::migrator::Migrator;
 use dotenvy::dotenv;
-use entities::{prelude::*, *};
 use env_logger::Env;
 use sea_orm::prelude::*;
 use sea_orm::Database;

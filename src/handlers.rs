@@ -48,6 +48,7 @@ async fn get_users(
 async fn create_user(
     body: web::Json<users::InsertModel>,
     data: web::Data<AppState>,
+    _: JWTMiddleware,
 ) -> impl Responder {
     let obj = body.into_inner().into_active_model();
     let res = obj.save(&data.db).await.unwrap().try_into_model().unwrap();
