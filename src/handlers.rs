@@ -1,13 +1,13 @@
-use chrono::Utc;
+use actix_web::{delete, get, post, put, web, HttpMessage, HttpRequest, HttpResponse, Responder};
+use sea_orm::*;
+use serde::Deserialize;
 use uuid::Uuid;
 
-use actix_web::{delete, get, post, put, web, HttpMessage, HttpRequest, HttpResponse, Responder};
-
-use crate::AppState;
-use crate::models::User;
 use crate::jwt::JWTMiddleware;
-use crate::helpers::pass_hash;
-use crate::schema::{CreateUserSchema, FilterOptions, UpdateUserSchema, UserMeSchema};
+use crate::AppState;
+
+use crate::entities::prelude::*;
+use crate::entities::users;
 
 pub fn config(conf: &mut web::ServiceConfig) {
     let scope = web::scope("api/users")
@@ -20,134 +20,73 @@ pub fn config(conf: &mut web::ServiceConfig) {
     conf.service(scope);
 }
 
+#[derive(Debug, Deserialize)]
+struct Paginate {
+    page: u64,
+    size: u64,
+}
+
 #[get("/")]
-async fn get_users(params: web::Query<FilterOptions>, data: web::Data<AppState>) -> impl Responder {
-    let limit = params.limit.unwrap_or(10);
-    let offset = (params.page.unwrap_or(1) - 1) * limit;
+async fn get_users(
+    paginate: web::Query<Paginate>,
+    data: web::Data<AppState>,
+    _: JWTMiddleware,
+) -> impl Responder {
+    let paginator = Users::find()
+        .order_by_desc(users::Column::CreatedAt)
+        .paginate(&data.db, paginate.size);
+    let num_pages = paginator.num_pages().await;
 
-    let query_result = sqlx::query_as!(
-        User,
-        "SELECT * FROM users ORDER BY created_at DESC LIMIT $1 OFFSET $2",
-        limit as i64,
-        offset as i64
-    )
-    .fetch_all(&data.db)
-    .await;
-
-    let response = serde_json::json!({"status": "success", "data": query_result.unwrap()});
-    HttpResponse::Ok().json(response)
+    let users = paginator
+        .fetch_page(paginate.page - 1)
+        .await
+        .map(|p| (p, num_pages));
+    HttpResponse::Ok().json(users.unwrap().0)
 }
 
 #[post("/")]
 async fn create_user(
-    body: web::Json<CreateUserSchema>,
+    body: web::Json<users::InsertModel>,
     data: web::Data<AppState>,
-    _: JWTMiddleware
+    _: JWTMiddleware,
 ) -> impl Responder {
-    let password = body.password.as_bytes();
-    let hash = pass_hash(&password);
-
-    let query_result = sqlx::query_as!(
-        UserMeSchema,
-        "INSERT INTO users (first_name, last_name, email, password) VALUES ($1, $2, $3, $4) RETURNING id, first_name, last_name, email, created_at, updated_at",
-        body.first_name,
-        body.last_name,
-        body.email,
-        hash,
-    )
-    .fetch_one(&data.db)
-    .await;
-
-    match query_result {
-        Ok(user) => {
-            HttpResponse::Ok().json(user)
-        }
-        Err(e) => {
-            return HttpResponse::InternalServerError()
-                .json(serde_json::json!({"error": format!("{:?}", e)}));
-        }
-    }
+    let obj = body.into_inner().into_active_model();
+    let res = obj.save(&data.db).await.unwrap().try_into_model().unwrap();
+    HttpResponse::Ok().json(res)
 }
 
-
 #[get("/me")]
-async fn user_me(
-    req: HttpRequest,
-    data: web::Data<AppState>,
-    _: JWTMiddleware
-) -> impl Responder {
+async fn user_me(req: HttpRequest, data: web::Data<AppState>, _: JWTMiddleware) -> impl Responder {
     let extensions = req.extensions();
     let user_id = extensions.get::<Uuid>().unwrap();
 
-    let query_result = sqlx::query_as!(UserMeSchema,
-        "SELECT id, first_name, last_name, email, created_at, updated_at FROM users WHERE id=$1", user_id)
-        .fetch_one(&data.db)
-        .await;
+    let user: Option<users::Model> = Users::find_by_id(*user_id).one(&data.db).await.unwrap();
 
-    HttpResponse::Ok().json(query_result.unwrap())
+    HttpResponse::Ok().json(user.unwrap().try_into_model().unwrap())
 }
 
 #[put("/{id}")]
 async fn update_user(
     path: web::Path<Uuid>,
-    body: web::Json<UpdateUserSchema>,
+    body: web::Json<users::UpdateModel>,
     data: web::Data<AppState>,
+    _: JWTMiddleware,
 ) -> impl Responder {
     let id = path.into_inner();
 
-    let query_result = sqlx::query_as!(User, "SELECT * FROM users WHERE id=$1", id)
-        .fetch_one(&data.db)
-        .await;
-
-    if query_result.is_err() {
-        let msg = format!("User with id {} not found", id);
-        return HttpResponse::NotFound().json(serde_json::json!({"error": msg}));
-    }
-
-    let now = Utc::now();
-    let user = query_result.unwrap();
-    let query_result = sqlx::query_as!(
-        User,
-        "UPDATE users SET first_name = $1, last_name = $2, email = $3, updated_at = $4 WHERE id = $5 RETURNING *", 
-        body.first_name.to_owned().unwrap_or(user.first_name.unwrap()), 
-        body.last_name.to_owned().unwrap_or(user.last_name.unwrap()), 
-        body.email.to_owned(), 
-        now, 
-        id 
-    ) 
-    .fetch_one(&data.db)
-    .await;
-
-    match query_result {
-        Ok(data) => {
-            HttpResponse::Ok().json(serde_json::json!({"data": data}))
-        }
-        Err(e) => {
-            HttpResponse::InternalServerError().json(serde_json::json!({"error": format!("{:?}", e)}))
-        }
-    }
+    let mut obj = body.into_inner().into_active_model();
+    obj.id = Unchanged(id);
+    let res = obj.save(&data.db).await.unwrap().try_into_model().unwrap();
+    HttpResponse::Ok().json(res)
 }
 
 #[delete("/{id}")]
 async fn delete_user(
     path: web::Path<Uuid>,
-    data: web::Data<AppState>
+    data: web::Data<AppState>,
+    _: JWTMiddleware,
 ) -> impl Responder {
     let id = path.into_inner();
-
-    let rows_affected = sqlx::query_as!(
-        User,
-        "DELETE FROM users WHERE id = $1;",
-        id
-    )
-    .execute(&data.db)
-    .await
-    .unwrap()
-    .rows_affected(); 
-
-    if rows_affected == 0 {
-        let message = format!("User with ID: {} not found", id);
-        return HttpResponse::NotFound().json(serde_json::json!({"status": "fail","message": message}));
-    }
+    Users::delete_by_id(id).exec(&data.db).await.unwrap();
     HttpResponse::NoContent().finish()
 }
