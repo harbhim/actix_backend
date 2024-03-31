@@ -3,10 +3,11 @@ use actix_web::{get, post, web, HttpResponse, Responder};
 use argon2::{Argon2, PasswordHash, PasswordVerifier};
 use sea_orm::*;
 
-use crate::auth_schema::LoginSchema;
+use super::auth_schema::LoginSchema;
+use super::jwt::{generate_token, JWTMiddleware};
+
 use crate::entities::prelude::*;
 use crate::entities::users;
-use crate::jwt::{generate_token, JWTMiddleware};
 use crate::AppState;
 
 pub fn config(conf: &mut web::ServiceConfig) {

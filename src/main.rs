@@ -1,12 +1,13 @@
 mod auth;
-mod auth_schema;
+mod conf;
 mod entities;
-mod handlers;
-mod jwt;
 mod migrator;
-mod schema;
+mod users;
 
+use crate::conf::get_config;
 use crate::migrator::Migrator;
+use crate::users::handlers;
+
 use dotenvy::dotenv;
 use env_logger::Env;
 use sea_orm::prelude::*;
@@ -26,26 +27,38 @@ async fn main() -> std::io::Result<()> {
     dotenv().ok();
     env_logger::init_from_env(Env::default().default_filter_or("info"));
 
-    let db_url = dotenvy::var("DATABASE_URL").expect("DATABASE_URL is not set in .env file");
-    let secret = dotenvy::var("JWT_SECRET_KEY").unwrap();
-    let server_domain = dotenvy::var("SERVER_DOMAIN").unwrap();
-    let port: u16 = dotenvy::var("PORT").unwrap().parse().unwrap();
+    let settings = get_config();
+    println!("{settings:#?}");
+    let pg = settings.pg;
+    let server_ = settings.server;
+    let jwt_ = settings.jwt;
+
+    let db_url = format!(
+        "postgres://{}:{}@{}:{}/{}",
+        pg.username, pg.password, pg.host, pg.port, pg.db_name
+    );
 
     let db = Database::connect(&db_url).await.unwrap();
     Migrator::up(&db, None).await.unwrap();
 
-    let state = AppState { db, secret };
+    let state = AppState {
+        db,
+        secret: jwt_.secret_key,
+    };
 
-    println!("🚀 Server started successfully at http://{server_domain}:{port}/");
+    println!(
+        "🚀 Server started successfully at http://{}:{}/",
+        server_.domain, server_.port
+    );
 
     HttpServer::new(move || {
         App::new()
             .app_data(web::Data::new(state.clone()))
-            .configure(auth::config)
+            .configure(auth::auth_handlers::config)
             .configure(handlers::config)
             .wrap(Logger::default())
     })
-    .bind((server_domain, port))?
+    .bind((server_.domain, server_.port))?
     .run()
     .await
 }

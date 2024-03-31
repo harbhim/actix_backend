@@ -3,7 +3,7 @@ use sea_orm::*;
 use serde::Deserialize;
 use uuid::Uuid;
 
-use crate::jwt::JWTMiddleware;
+use crate::auth::jwt::JWTMiddleware;
 use crate::AppState;
 
 use crate::entities::prelude::*;
