@@ -54,11 +54,13 @@ async fn user_login(body: web::Json<LoginSchema>, data: web::Data<AppState>) -> 
     match record {
         Some(user) => {
             // Generate JWT with claims and set cookie
-            let secret = &data.secret;
-            let token = generate_token(user.id, secret).await;
+            let token = generate_token(user.id, &data.settings.jwt).await;
             let cookie = Cookie::build("__tk_sess", token.to_owned())
                 .path("/")
-                .max_age(ActixWebDuration::new(60 * 60, 0))
+                .max_age(ActixWebDuration::new(
+                    (&data.settings.jwt.access_token_lifetime_hours * 60.0 * 60.0) as i64,
+                    0,
+                ))
                 .http_only(true)
                 .finish();
             let response = serde_json::json!({"access_token": token});

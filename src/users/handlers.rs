@@ -1,13 +1,12 @@
 use actix_web::{delete, get, post, put, web, HttpMessage, HttpRequest, HttpResponse, Responder};
 use sea_orm::*;
-use serde::Deserialize;
 use uuid::Uuid;
 
 use crate::auth::jwt::JWTMiddleware;
-use crate::AppState;
-
 use crate::entities::prelude::*;
 use crate::entities::users;
+use crate::helpers::{get_paginated_result, Paginate};
+use crate::AppState;
 
 pub fn config(conf: &mut web::ServiceConfig) {
     let scope = web::scope("api/users")
@@ -20,12 +19,6 @@ pub fn config(conf: &mut web::ServiceConfig) {
     conf.service(scope);
 }
 
-#[derive(Debug, Deserialize)]
-struct Paginate {
-    page: u64,
-    size: u64,
-}
-
 #[get("/")]
 async fn get_users(
     paginate: web::Query<Paginate>,
@@ -35,13 +28,9 @@ async fn get_users(
     let paginator = Users::find()
         .order_by_desc(users::Column::CreatedAt)
         .paginate(&data.db, paginate.size);
-    let num_pages = paginator.num_pages().await;
 
-    let users = paginator
-        .fetch_page(paginate.page - 1)
-        .await
-        .map(|p| (p, num_pages));
-    HttpResponse::Ok().json(users.unwrap().0)
+    let res = get_paginated_result(paginator, paginate.page).await;
+    HttpResponse::Ok().json(res)
 }
 
 #[post("/")]

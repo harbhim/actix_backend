@@ -1,7 +1,7 @@
 use config::Config;
-use serde::{Deserialize, Serialize};
+use serde::Deserialize;
 
-#[derive(Debug, Serialize, Deserialize)]
+#[derive(Debug, Deserialize, Clone)]
 pub struct PG {
     pub username: String,
     pub password: String,
@@ -10,22 +10,25 @@ pub struct PG {
     pub db_name: String,
 }
 
-#[derive(Debug, Serialize, Deserialize)]
+#[derive(Debug, Deserialize, Clone)]
 pub struct Server {
     pub domain: String,
     pub port: u16,
 }
 
-#[derive(Debug, Serialize, Deserialize)]
+#[derive(Debug, Deserialize, Clone)]
 pub struct JWT {
     pub secret_key: String,
+    pub access_token_lifetime_hours: f32,
+    pub refresh_token_lifetime_hours: f32,
+    pub algorithm: String,
 }
 
-#[derive(Debug, Serialize, Deserialize)]
+#[derive(Debug, Deserialize, Clone)]
 pub struct AppConfig {
     pub pg: PG,
     pub server: Server,
-    pub jwt: JWT
+    pub jwt: JWT,
 }
 
 pub fn get_config() -> AppConfig {
