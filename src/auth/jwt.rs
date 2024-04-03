@@ -5,22 +5,23 @@ use chrono::Utc;
 use jsonwebtoken::{decode, encode, DecodingKey, EncodingKey, Header, Validation};
 use serde::{Deserialize, Serialize};
 use std::future::{ready, Ready};
+use std::u32;
 use uuid::Uuid;
 
-use crate::AppState;
+use crate::{conf, AppState};
 
 #[derive(Debug, Serialize, Deserialize)]
 struct TokenClaims {
     user_id: Uuid,
-    exp: usize,
-    iat: usize,
+    exp: u32,
+    iat: u32,
 }
 
-pub async fn generate_token(user_id: Uuid, secret: &str) -> String {
+pub async fn generate_token(user_id: Uuid, jwt: &conf::JWT) -> String {
     // Getting token claims
     let now = Utc::now();
-    let iat = now.timestamp() as usize;
-    let exp = iat + 3600;
+    let iat = now.timestamp() as u32;
+    let exp = iat + (jwt.access_token_lifetime_hours * 60.0 * 60.0) as u32;
 
     let token_claims = TokenClaims { user_id, exp, iat };
 
@@ -28,7 +29,7 @@ pub async fn generate_token(user_id: Uuid, secret: &str) -> String {
     let token = encode(
         &Header::default(),
         &token_claims,
-        &EncodingKey::from_secret(secret.as_ref()),
+        &EncodingKey::from_secret(jwt.secret_key.as_ref()),
     );
     token.unwrap()
 }
@@ -64,7 +65,7 @@ impl FromRequest for JWTMiddleware {
             return ready(Err(ErrorUnauthorized("Please provide valid token")));
         }
 
-        let claims = decode_token(&token.unwrap(), &data.secret).unwrap();
+        let claims = decode_token(&token.unwrap(), &data.settings.jwt.secret_key).unwrap();
         let user_id: Uuid = claims.user_id;
 
         req.extensions_mut().insert(user_id.to_owned());
